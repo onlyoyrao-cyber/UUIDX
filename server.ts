@@ -9,8 +9,12 @@ import { GoogleGenAI, Type } from '@google/genai';
 const app = express();
 const PORT = 3000;
 
+const isVercel = !!process.env.VERCEL;
+
 // Prediction cache to avoid excessive API requests
-const cacheFilePath = path.resolve('src/data/prediction_cache.json');
+const cacheFilePath = isVercel
+  ? '/tmp/prediction_cache.json'
+  : path.resolve('src/data/prediction_cache.json');
 
 function getCachedPrediction(currentPeriod: string) {
   try {
@@ -53,11 +57,25 @@ function clearCachedPredictionFile() {
 app.use(express.json());
 
 // Path to data file
-const historyFilePath = path.resolve('src/data/history.json');
+const historyFilePath = isVercel
+  ? '/tmp/history.json'
+  : path.resolve('src/data/history.json');
 
 // Ensure history file directory exists and has a baseline
 function getRecords() {
   try {
+    if (isVercel && !fs.existsSync(historyFilePath)) {
+      const bundledHistoryPath = path.resolve('src/data/history.json');
+      if (fs.existsSync(bundledHistoryPath)) {
+        const dir = path.dirname(historyFilePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.copyFileSync(bundledHistoryPath, historyFilePath);
+        console.log('Seeded /tmp/history.json from bundled file on Vercel.');
+      }
+    }
+
     if (fs.existsSync(historyFilePath)) {
       const data = fs.readFileSync(historyFilePath, 'utf8');
       return JSON.parse(data);
@@ -301,7 +319,9 @@ ${recordsText}
 app.get('/api/analyze', async (req, res) => {
   // Check if we should passively trigger a scrape to check for 21:35 updates
   // Only scrape if the cache doesn't exist or is older than 5 minutes since last check (using simple timestamp files)
-  const timestampPath = path.resolve('src/data/last_check.txt');
+  const timestampPath = isVercel
+    ? '/tmp/last_check.txt'
+    : path.resolve('src/data/last_check.txt');
   let shouldCheck = false;
   
   if (!fs.existsSync(timestampPath)) {
@@ -468,4 +488,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!isVercel) {
+  startServer();
+}
+
+export default app;
