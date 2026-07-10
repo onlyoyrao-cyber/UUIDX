@@ -11,6 +11,10 @@ const PORT = 3000;
 
 const isVercel = !!process.env.VERCEL;
 
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const initialHistory = require('./src/data/history.json');
+
 // Prediction cache to avoid excessive API requests
 const cacheFilePath = isVercel
   ? '/tmp/prediction_cache.json'
@@ -65,25 +69,24 @@ const historyFilePath = isVercel
 function getRecords() {
   try {
     if (isVercel && !fs.existsSync(historyFilePath)) {
-      const bundledHistoryPath = path.resolve('src/data/history.json');
-      if (fs.existsSync(bundledHistoryPath)) {
-        const dir = path.dirname(historyFilePath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.copyFileSync(bundledHistoryPath, historyFilePath);
-        console.log('Seeded /tmp/history.json from bundled file on Vercel.');
+      const dir = path.dirname(historyFilePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
       }
+      fs.writeFileSync(historyFilePath, JSON.stringify(initialHistory, null, 2), 'utf8');
+      console.log('Seeded /tmp/history.json from bundled JSON memory object.');
     }
 
     if (fs.existsSync(historyFilePath)) {
       const data = fs.readFileSync(historyFilePath, 'utf8');
       return JSON.parse(data);
+    } else {
+      return initialHistory;
     }
   } catch (error) {
     console.error('Error reading history file:', error);
   }
-  return [];
+  return initialHistory || [];
 }
 
 function saveRecords(records: any[]) {
